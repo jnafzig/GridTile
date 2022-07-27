@@ -17,11 +17,9 @@ def rot(theta):
         [np.cos(theta), -np.sin(theta)],
         [np.sin(theta), np.cos(theta)]
     ], dtype=jnp.float64)
-
 rot90 = rot(jnp.pi/2)
 
 def intersection(vec1, vec2):
-
     normal1 = vec1 / jnp.linalg.norm(vec1)
     direction1 = jnp.matmul(rot90, normal1)
     normal2 = vec2 / jnp.linalg.norm(vec2)
@@ -41,28 +39,99 @@ get_intersections = jax.vmap(
     1
 )
 
+def intersection_filter(intersection):
+    if np.any(np.isnan(intersection)):
+        return False
+    return np.linalg.norm(intersection) < 1e8
 
-            
-def norm(vector):
-    return np.sum(vector ** 2) ** (1/2)
-            
-def normalize(vector):
-    return vector / norm(vector)
+class Grid:
+    def __init__(self, lines):
+        self.lines = lines
+        self.n = len(lines)
+        self.norms = lines / np.linalg.norm(lines, axis=1)[..., np.newaxis]
+        self.directions = (rot90 @ self.norms[..., jnp.newaxis]).squeeze()
+
+        print('finding intersections')
+        self.intersections = get_intersections(lines, lines)
+
+        print('creating rhombuses')
+        self.rhombuses = {}
+        for i in range(self.n):
+            for j in range(i+1, self.n):
+                self.rhombuses[frozenset((i,j))] = Rhomb(
+                    id=f'{i},{j}',
+                    sides={
+                        j: self.norms[i],
+                        i: self.norms[j]
+                    },
+                    directions={
+                        j: self.directions[j],
+                        i: self.directions[i]
+                    }
+                )
+
+        print('sorting intersections')
+        self.orderings = np.argsort(
+            (self.directions[:, np.newaxis, :] * self.intersections).sum(axis=2),
+            axis=1
+        )
+        print('connecting rhombuses')
+        for i in range(self.n):
+            print(i)
+            ordering = self.orderings[i].tolist()
+            ordering = [x for x in ordering 
+                if x != i and intersection_filter(self.intersections[i][x])
+            ]
+            for j1, j2 in zip(ordering[:-1], ordering[1:]):
+                rhomb1 = self.rhombuses[frozenset((i, j1))]
+                rhomb2 = self.rhombuses[frozenset((i, j2))]
+                rhomb1.up_neighbors[i] = rhomb2
+                rhomb2.down_neighbors[i] = rhomb1
 
 
+    def plot_lines(self, ax, debug=False):
+        for line, norm, direction in zip(self.lines, self.norms, self.directions):
+            ax.axline(
+                line,
+                line + rot(np.pi/2) @ line
+            )
+            if debug:
+                ax.arrow(*line, *direction, width=.04)
+
+        for i in range(self.n):
+            for j in range(i+1, self.n):
+                if not intersection_filter(self.intersections[i,j]):
+                    continue
+                if debug:
+                    ax.plot(*intersections[i,j,:], 'o')
+                    ax.annotate(f'{i},{j}', intersections[i,j,:])
+                else:
+                    pass
+                    #ax.plot(*intersections[i,j,:], '.')
+    
+    def plot_rhombuses(self, ax, debug=False):
+        patches = [r.draw() for r in self.rhombuses.values() if r.position is not None]
+        p = PatchCollection(patches, alpha=0.4, edgecolor='k')
+        if debug:
+            for rhomb in rhombuses.values():
+                if rhomb.position is None:
+                    continue
+                ax.annotate(f'{rhomb.id}', rhomb.position)
+                for key in rhomb.sides:
+                    vec = rhomb.sides[key] * np.sign(rhomb.sides[key] @ rhomb.directions[key])
+                    ax.arrow(*(rhomb.position-vec/2), *vec, width=.02)
+                    #ax.arrow(*(rhomb.position), *rhomb.directions[key], width=.02, color='k')
+        ax.add_collection(p)
+    
 def get_basis(N):
     return np.stack(
         [rot(2*np.pi * i / N) @ np.array([1, 0]) for i in range(N)]
     )
 
-def rhombus(norm1, norm2, p):
-    rhombus = np.stack([norm1, norm2 + norm1, norm2, 0*norm1]) + p
-    return Polygon(rhombus, closed=True)
-
-N = 5 
+N = 7
 basis = get_basis(N)
 offsets = np.random.random(N)
-grid_range = range(-10,10)
+grid_range = range(-10,11)
 
 lines = np.zeros((len(basis), len(grid_range), 2), dtype=float)
 
@@ -86,13 +155,9 @@ print(repr(lines))
 #    [-0.40205683, -0.79968747],
 #    [ 0.64082981, -0.64682302]
 #])
-
+#
+#lines = np.random.random((10, 2))*2-1
 #positioned_rhomb = frozenset((0,1))
-
-#lines = np.random.random((20, 2))*2-1
-normed = lines / np.linalg.norm(lines, axis=1)[..., np.newaxis]
-
-intersections = get_intersections(lines, lines)
 
 
 @dataclass
@@ -108,7 +173,7 @@ class Rhomb:
         stack = [self]
         while stack:
             self = stack.pop()
-            print('positioning', self.id)
+            #print('positioning', self.id)
             newly_positioned = []
             for key, neighbor in self.up_neighbors.items():
                 if neighbor.position is not None:
@@ -117,7 +182,7 @@ class Rhomb:
                 vec2 = neighbor.sides[key] * np.sign(neighbor.sides[key] @ neighbor.directions[key])
                 neighbor.position = self.position + (vec1 + vec2) / 2
                 newly_positioned.append(neighbor)
-                print(neighbor.id, 'up')
+                #print(neighbor.id, 'up')
             for key, neighbor in self.down_neighbors.items():
                 if neighbor.position is not None:
                     continue
@@ -125,7 +190,7 @@ class Rhomb:
                 vec2 = neighbor.sides[key] * np.sign(neighbor.sides[key] @ neighbor.directions[key])
                 neighbor.position = self.position - (vec1 + vec2) / 2
                 newly_positioned.append(neighbor)
-                print(neighbor.id, 'down')
+                #print(neighbor.id, 'down')
             if cascade:
                 stack.extend(newly_positioned)
 
@@ -152,97 +217,22 @@ class Rhomb:
         ]) / 2 + self.position
         return Polygon(rhombus, closed=True)
 
-positions = np.full(shape=intersections.shape, fill_value=np.NaN)
-side1 = np.full(shape=intersections.shape, fill_value=np.NaN)
-side2 = np.full(shape=intersections.shape, fill_value=np.NaN)
-norms = lines / jnp.linalg.norm(lines, axis=1, keepdims=True)
-directions = (rot90 @ norms[..., jnp.newaxis]).squeeze()
-orderings = (directions[np.newaxis, ...] * intersections).sum(axis=2)
+grid = Grid(lines)
 
-rhombuses = {}
-m, n, _ = intersections.shape
-count = 0
-for i in range(m):
-    norm_i = lines[i] / jnp.linalg.norm(lines[i])
-    direction_i = jnp.matmul(rot90, norm_i)
-    for j in range(i+1, n):
-        norm_j = lines[j] / jnp.linalg.norm(lines[j])
-        direction_j = jnp.matmul(rot90, norm_j)
-        rhombuses[frozenset((i,j))] = Rhomb(
-            id=f'{i},{j}',
-            sides={
-                j: norm_i,
-                i: norm_j
-            },
-            directions={
-                j: direction_j,
-                i: direction_i
-            }
-        )
-        count += 1
+grid.rhombuses[positioned_rhomb].position = np.zeros(2)
+grid.rhombuses[positioned_rhomb].position_neighbors(cascade=True)
 
-def intersection_filter(intersection):
-    if np.any(np.isnan(intersection)):
-        return False
-    return np.linalg.norm(intersection) < 1e8
-
-for i in range(m):
-    print(i)
-    norm_i = lines[i] / jnp.linalg.norm(lines[i])
-    direction_i = jnp.matmul(rot90, norm_i)
-    ordering = np.argsort(intersections[i] @ direction_i).tolist()
-    ordering = [x for x in ordering if x != i and intersection_filter(intersections[i][x])]
-    for j1, j2 in zip(ordering[:-1], ordering[1:]):
-        rhomb1 = rhombuses[frozenset((i, j1))]
-        rhomb2 = rhombuses[frozenset((i, j2))]
-        rhomb1.up_neighbors[i] = rhomb2
-        rhomb2.down_neighbors[i] = rhomb1
-
-rhombuses[positioned_rhomb].position = np.zeros(2)
-rhombuses[positioned_rhomb].position_neighbors(cascade=True)
 
 fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(7, 10), gridspec_kw={'wspace':0, 'hspace':0})
 
-debug = False
-for line in lines:
-    ax1.axline(
-        line,
-        line + rot(np.pi/2) @ line
-    )
-    norm = line / jnp.linalg.norm(line)
-    direction = jnp.matmul(rot90, norm)
-    if debug:
-        ax1.arrow(*line, *direction, width=.04)
-
-m, n, _ = intersections.shape
-for i in range(m):
-    for j in range(i+1, n):
-        if not intersection_filter(intersections[i,j]):
-            continue
-        if debug:
-            ax1.plot(*intersections[i,j,:], 'o')
-            ax1.annotate(f'{i},{j}', intersections[i,j,:])
-        else:
-            ax1.plot(*intersections[i,j,:], '.')
+grid.plot_lines(ax1)
+grid.plot_rhombuses(ax2)
 
 ax1.axis('square')
 ax1.axis('off')
-ax1.set_xlim([-4,4])
-ax1.set_ylim([-4,4])
 
-patches = [r.draw() for r in rhombuses.values() if r.position is not None]
-p = PatchCollection(patches, alpha=0.4, edgecolor='k')
-if debug:
-    for rhomb in rhombuses.values():
-        if rhomb.position is None:
-            continue
-        ax2.annotate(f'{rhomb.id}', rhomb.position)
-        for key in rhomb.sides:
-            vec = rhomb.sides[key] * np.sign(rhomb.sides[key] @ rhomb.directions[key])
-            ax2.arrow(*(rhomb.position-vec/2), *vec, width=.02)
-            #ax2.arrow(*(rhomb.position), *rhomb.directions[key], width=.02, color='k')
-ax2.add_collection(p)
 ax2.axis('square')
 ax2.axis('off')
+#plt.savefig('/home/jonathan/Desktop/step5.png', dpi=300)
 plt.show()
 #    
