@@ -16,13 +16,31 @@ movement_distance = 0
 cutter_position = cuts[0][0]
 print('cutting', cutting_distance)
 print('movement', movement_distance)
-with open('puzzle01.svg', 'w') as f:
+with open('puzzle01-a.svg', 'w') as f:
     print('<svg version="1.1" '
           'width="16in" height="12in" '
           'xmlns="http://www.w3.org/2000/svg"> ',
           file=f
     )
     print('<path d="{}" fill="none" stroke="red" stroke-width="0.3"/>'.format(
+            cuts_to_path(cuts, scale=60, pre_translate=-center, post_translate=(96*6,96*6))
+        ),
+        file=f
+    )
+    print('<circle cx="{}" cy="{}" r="{}" fill="none" stroke="red" stroke-width="0.3"/>'.format(
+            96*6, 96*6, 1.1*max_distance*60
+        ),
+        file=f
+    )
+    print('</svg>', file=f)
+
+with open('puzzle01-b.svg', 'w') as f:
+    print('<svg version="1.1" '
+          'width="16in" height="12in" '
+          'xmlns="http://www.w3.org/2000/svg"> ',
+          file=f
+    )
+    print('<path d="{}" fill="none" stroke="blue" stroke-width="0.3"/>'.format(
             cuts_to_path(cuts, scale=60, pre_translate=-center, post_translate=(96*6,96*6))
         ),
         file=f
