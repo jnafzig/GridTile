@@ -27,7 +27,7 @@ with open('puzzle01.svg', 'w') as f:
         ),
         file=f
     )
-    print('<circle cx="{}" cy="{}" r="{}"  fill="none" stroke="black" stroke-width="0.3"/>'.format(
+    print('<circle cx="{}" cy="{}" r="{}" fill="none" stroke="red" stroke-width="0.3"/>'.format(
             96*6, 96*6, 1.1*max_distance*60
         ),
         file=f
