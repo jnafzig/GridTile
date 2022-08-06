@@ -164,9 +164,12 @@ class Grid:
                 if r.position is not None
         ))))
 
+    def positions(self):
+        return np.stack(r.position for r in self.rhombuses.values() if r.position is not None)
+
     def average_center(self):
         return np.mean(
-            np.stack(r.position for r in self.rhombuses.values() if r.position is not None),
+            self.positions(),
             axis=0
         )
 
@@ -345,6 +348,10 @@ def cuts_to_path(cuts, scale=1, pre_translate=(0, 0), post_translate=(0,0)):
 if __name__ == '__main__':
     grid = RegularGrid(5, 5, offsets=[0.15, 0.15, 0.15, 0.15, 0.15])
     center = grid.average_center()
+    relative_positions = grid.positions() - center
+    distances = np.linalg.norm(relative_positions, axis=1)
+    max_distance = np.max(distances)
+
     segments = grid.segment_set()
     point_index = PointIndex(segments)
     cuts = point_index.sorted_cuts()
@@ -361,15 +368,20 @@ if __name__ == '__main__':
               'xmlns="http://www.w3.org/2000/svg"> ',
               file=f
         )
-        print('<path d="{}" fill="none" stroke="black" stroke-width="0.3"/>'.format(
-                cuts_to_path(cuts, scale=60, pre_translate=-center, post_translate=(8,6))
+        print('<path d="{}" fill="none" stroke="red" stroke-width="0.3"/>'.format(
+                cuts_to_path(cuts, scale=60, pre_translate=-center, post_translate=(96*6,96*6))
+            ),
+            file=f
+        )
+        print('<circle cx="{}" cy="{}" r="{}"  fill="none" stroke="black" stroke-width="0.3"/>'.format(
+                96*6, 96*6, 1.1*max_distance*60
             ),
             file=f
         )
         print('</svg>', file=f)
-    #for cut in cuts:
-    #    movement_distance += distance(cutter_position, cut[0])
-    #    cutting_distance += len(cut)
-    #    cutter_position = cut[-1]
-    #    plt.plot(*zip(*cut))
-    #plt.show()
+    for cut in cuts:
+        movement_distance += distance(cutter_position, cut[0])
+        cutting_distance += len(cut)
+        cutter_position = cut[-1]
+        plt.plot(*zip(*cut))
+    plt.show()
